@@ -2,8 +2,6 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <ESP32Servo.h>
-#include <esp_pm.h>
-#include <esp_wifi.h>
 
 // Pin assignments - GPIOs for XIAO C3
 const int forwardPwmPin    = D6;  // GPIO6
@@ -17,7 +15,6 @@ const int headLightsPin    = D9;  // GPIO9 (headlights)
 // Motor PWM parameters - Use lower frequency to avoid servo conflicts
 const int pwmFreq       = 1000;  // 1 kHz for motors (much lower than servo's 50Hz)
 const int pwmResolution = 8;     // 8-bit
-// No PWM for lights to avoid servo conflicts - using simple on/off control
 
 // Joystick dead-band thresholds
 const int centerLow  = 1700;
@@ -27,16 +24,13 @@ const int centerHigh = 2000;
 const int servoMinPulse = 1000;  // 1ms
 const int servoCenterPulse = 1500; // 1.5ms
 const int servoMaxPulse = 2000;  // 2ms
-const int servoDeadZone = 100;
+const int servoDeadZone = 250;  // Back to original value
 
-// Lights control - simple on/off to avoid servo conflicts
-// Using digital pins to control transistors directly
-
-// Packet format
+// Packet format - updated to include lights
 typedef struct {
   uint16_t joyY;
   uint16_t joyX;
-  bool lightsOn;  // Lights control
+  bool lightsOn;  // Added lights control
 } JoyPacket;
 
 // Latest joystick values
@@ -50,22 +44,6 @@ const unsigned long timeoutPeriod = 500; // 500ms timeout
 bool motorsActive = false;
 
 Servo steeringServo;  // Create Servo object
-
-// Function to configure power management for energy saving
-void configurePowerManagement() {
-  // Set CPU frequency to 80MHz instead of 160MHz for energy saving
-  setCpuFrequencyMhz(80);
-  
-  // Configure power management
-  esp_pm_config_t pm_config;
-  pm_config.max_freq_mhz = 80;
-  pm_config.min_freq_mhz = 10;
-  pm_config.light_sleep_enable = true;
-  esp_pm_configure(&pm_config);
-  
-  // Reduce WiFi power consumption
-  esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
-}
 
 // Function to determine brake light state based on throttle
 bool shouldBrakeLightsBeOn(uint16_t joyY) {
@@ -89,15 +67,10 @@ void controlLights(uint16_t joyY, bool lightsOn) {
     // Brake lights based on throttle (braking effect)
     bool brakeState = shouldBrakeLightsBeOn(joyY);
     digitalWrite(redLightsPin, brakeState ? HIGH : LOW);
-    
-    // Debug lights output
-    Serial.print("Lights ON - Head: ON, Brake: ");
-    Serial.println(brakeState ? "ON" : "OFF");
   } else {
     // All lights off
     digitalWrite(headLightsPin, LOW);
     digitalWrite(redLightsPin, LOW);
-    Serial.println("Lights OFF");
   }
 }
 
@@ -125,10 +98,10 @@ void onDataRecv(const esp_now_recv_info_t *info, const uint8_t *incomingData, in
 void setup() {
   Serial.begin(115200);
   delay(1000);
-  Serial.println("Starting Energy-Optimized XIAO C3 Receiver with Lights Control...");
+  Serial.println("Starting XIAO C3 Receiver with Lights Control...");
 
-  // Configure power management for energy saving
-  configurePowerManagement();
+  // Simple energy saving - just reduce CPU frequency
+  setCpuFrequencyMhz(80);
 
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
@@ -154,10 +127,11 @@ void setup() {
   digitalWrite(reverseEnablePin, LOW);
   digitalWrite(forwardPwmPin, LOW);
   digitalWrite(reversePwmPin, LOW);
-
-  // Initialize lights to off (simple digital control)
   digitalWrite(redLightsPin, LOW);
   digitalWrite(headLightsPin, LOW);
+
+  // Don't setup PWM for motors or lights - use simple on/off control
+  // This completely avoids PWM conflicts with the servo
 
   // Initialize servo at 50Hz (ESP32Servo handles this automatically)
   steeringServo.setPeriodHertz(50);  // Explicitly set 50Hz
@@ -210,16 +184,14 @@ void loop() {
     motorsActive = false;
   }
 
-  // Servo control - Fixed logic
+  // Servo control - EXACTLY like your working code
   int deviation = joyX - 2048;
   int servoPulse = servoCenterPulse;
 
   if (abs(deviation) > servoDeadZone) {
     if (deviation < 0) {
-      // Left turn
       servoPulse = map(joyX, 0, 2048 - servoDeadZone, servoMinPulse, servoCenterPulse);
     } else {
-      // Right turn
       servoPulse = map(joyX, 2048 + servoDeadZone, 4095, servoCenterPulse, servoMaxPulse);
     }
     servoPulse = constrain(servoPulse, servoMinPulse, servoMaxPulse);
@@ -242,5 +214,5 @@ void loop() {
                 (lightsOn && brakeState ? "ON" : "OFF"),
                 (lightsOn ? "ON" : "OFF"));
   
-  delay(25); // Reduced delay for better responsiveness
+  delay(50); // Back to original delay timing
 }
