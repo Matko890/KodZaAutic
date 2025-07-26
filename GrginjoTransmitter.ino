@@ -183,6 +183,8 @@ void loop() {
     Serial.print(turning);
     Serial.print(" | Lights: ");
     Serial.print(packet.lightsOn ? "ON" : "OFF");
+    Serial.print(" | Button: ");
+    Serial.print(digitalRead(lightsPin));
     Serial.print(" | Raw Y: ");
     Serial.print(packet.joyY);
     Serial.print(" X: ");

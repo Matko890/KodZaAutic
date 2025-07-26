@@ -30,7 +30,7 @@ const int centerHigh = 2000;
 const int servoMinPulse = 1000;  // 1ms
 const int servoCenterPulse = 1500; // 1.5ms
 const int servoMaxPulse = 2000;  // 2ms
-const int servoDeadZone = 250;
+const int servoDeadZone = 100;
 
 // Brake lights parameters
 const int minBrakeIntensity = 50;  // Minimum brightness when not braking
@@ -77,14 +77,13 @@ int calculateBrakeIntensity(uint16_t joyY) {
   int center = 2048;
   int deadZone = 100;
   
-  // If in dead zone (not moving), show minimum brake lights
+  // If in dead zone (not moving), show maximum brake lights (braking effect)
   if (abs(joyY - center) < deadZone) {
-    return maxBrakeIntensity; // Stronger when stopped (braking effect)
+    return maxBrakeIntensity;
   }
   
   // If moving forward, reduce brake lights
   if (joyY > center + deadZone) {
-    // Moving forward - minimal brake lights
     return minBrakeIntensity;
   }
   
@@ -101,10 +100,17 @@ void controlLights(uint16_t joyY, bool lightsOn) {
     // Brake lights with intensity based on throttle
     int brakeIntensity = calculateBrakeIntensity(joyY);
     ledcWrite(redLightsPin, brakeIntensity);
+    
+    // Debug lights output
+    Serial.print("Lights ON - Head: ");
+    Serial.print(headLightsIntensity);
+    Serial.print(" Brake: ");
+    Serial.println(brakeIntensity);
   } else {
     // All lights off
     ledcWrite(headLightsPin, 0);
     ledcWrite(redLightsPin, 0);
+    Serial.println("Lights OFF");
   }
 }
 
@@ -221,14 +227,16 @@ void loop() {
     motorsActive = false;
   }
 
-  // Servo control
+  // Servo control - Fixed logic
   int deviation = joyX - 2048;
   int servoPulse = servoCenterPulse;
 
   if (abs(deviation) > servoDeadZone) {
     if (deviation < 0) {
+      // Left turn
       servoPulse = map(joyX, 0, 2048 - servoDeadZone, servoMinPulse, servoCenterPulse);
     } else {
+      // Right turn
       servoPulse = map(joyX, 2048 + servoDeadZone, 4095, servoCenterPulse, servoMaxPulse);
     }
     servoPulse = constrain(servoPulse, servoMinPulse, servoMaxPulse);
