@@ -14,13 +14,10 @@ const int servoPin         = D4;  // GPIO4 (servo)
 const int redLightsPin     = D10; // GPIO10 (red brake lights)
 const int headLightsPin    = D9;  // GPIO9 (headlights)
 
-// Note: ESP32-C3 uses simplified PWM API - no channels needed
-
 // Motor PWM parameters - Use lower frequency to avoid servo conflicts
 const int pwmFreq       = 1000;  // 1 kHz for motors (much lower than servo's 50Hz)
 const int pwmResolution = 8;     // 8-bit
-const int lightsPwmFreq = 5000;  // 5 kHz for lights PWM
-const int lightsPwmResolution = 8; // 8-bit
+// No PWM for lights to avoid servo conflicts - using simple on/off control
 
 // Joystick dead-band thresholds
 const int centerLow  = 1700;
@@ -32,10 +29,8 @@ const int servoCenterPulse = 1500; // 1.5ms
 const int servoMaxPulse = 2000;  // 2ms
 const int servoDeadZone = 100;
 
-// Brake lights parameters
-const int minBrakeIntensity = 50;  // Minimum brightness when not braking
-const int maxBrakeIntensity = 255; // Maximum brightness when braking
-const int headLightsIntensity = 200; // Headlights intensity when on
+// Lights control - simple on/off to avoid servo conflicts
+// Using digital pins to control transistors directly
 
 // Packet format
 typedef struct {
@@ -72,44 +67,36 @@ void configurePowerManagement() {
   esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
 }
 
-// Function to calculate brake light intensity based on throttle
-int calculateBrakeIntensity(uint16_t joyY) {
+// Function to determine brake light state based on throttle
+bool shouldBrakeLightsBeOn(uint16_t joyY) {
   int center = 2048;
   int deadZone = 100;
   
-  // If in dead zone (not moving), show maximum brake lights (braking effect)
-  if (abs(joyY - center) < deadZone) {
-    return maxBrakeIntensity;
+  // Brake lights ON when not accelerating (stopped or reversing)
+  if (joyY <= center + deadZone) {
+    return true;  // Braking effect when stopped or reversing
   }
   
-  // If moving forward, reduce brake lights
-  if (joyY > center + deadZone) {
-    return minBrakeIntensity;
-  }
-  
-  // If reversing, medium brake lights
-  return (minBrakeIntensity + maxBrakeIntensity) / 2;
+  return false;  // Off when moving forward
 }
 
 // Function to control lights based on current state
 void controlLights(uint16_t joyY, bool lightsOn) {
   if (lightsOn) {
-    // Headlights on
-    ledcWrite(headLightsPin, headLightsIntensity);
+    // Headlights on (constant)
+    digitalWrite(headLightsPin, HIGH);
     
-    // Brake lights with intensity based on throttle
-    int brakeIntensity = calculateBrakeIntensity(joyY);
-    ledcWrite(redLightsPin, brakeIntensity);
+    // Brake lights based on throttle (braking effect)
+    bool brakeState = shouldBrakeLightsBeOn(joyY);
+    digitalWrite(redLightsPin, brakeState ? HIGH : LOW);
     
     // Debug lights output
-    Serial.print("Lights ON - Head: ");
-    Serial.print(headLightsIntensity);
-    Serial.print(" Brake: ");
-    Serial.println(brakeIntensity);
+    Serial.print("Lights ON - Head: ON, Brake: ");
+    Serial.println(brakeState ? "ON" : "OFF");
   } else {
     // All lights off
-    ledcWrite(headLightsPin, 0);
-    ledcWrite(redLightsPin, 0);
+    digitalWrite(headLightsPin, LOW);
+    digitalWrite(redLightsPin, LOW);
     Serial.println("Lights OFF");
   }
 }
@@ -168,13 +155,9 @@ void setup() {
   digitalWrite(forwardPwmPin, LOW);
   digitalWrite(reversePwmPin, LOW);
 
-  // Setup PWM for lights control (ESP32-C3 uses newer API)
-  ledcAttach(redLightsPin, lightsPwmFreq, lightsPwmResolution);
-  ledcAttach(headLightsPin, lightsPwmFreq, lightsPwmResolution);
-  
-  // Initialize lights to off
-  ledcWrite(redLightsPin, 0);
-  ledcWrite(headLightsPin, 0);
+  // Initialize lights to off (simple digital control)
+  digitalWrite(redLightsPin, LOW);
+  digitalWrite(headLightsPin, LOW);
 
   // Initialize servo at 50Hz (ESP32Servo handles this automatically)
   steeringServo.setPeriodHertz(50);  // Explicitly set 50Hz
@@ -182,7 +165,7 @@ void setup() {
   steeringServo.writeMicroseconds(servoCenterPulse);  // Start at center
 
   lastReceiveTime = millis();
-  Serial.println("Setup complete - Motors at 1kHz, Servo at 50Hz, Lights PWM at 5kHz");
+  Serial.println("Setup complete - Motors simple on/off, Servo at 50Hz, Lights digital control");
   Serial.print("CPU Frequency: ");
   Serial.print(getCpuFrequencyMhz());
   Serial.println("MHz");
@@ -247,17 +230,17 @@ void loop() {
   // Control lights based on current state
   controlLights(joyY, lightsOn);
 
-  // Calculate brake light intensity for display
-  int brakeIntensity = calculateBrakeIntensity(joyY);
+  // Get brake light state for display
+  bool brakeState = shouldBrakeLightsBeOn(joyY);
 
-  Serial.printf("Y=%4u X=%4u | Fwd=%s Rev=%s | Servo=%4d us | Lights=%s | Brake=%3d | Head=%3d\n", 
+  Serial.printf("Y=%4u X=%4u | Fwd=%s Rev=%s | Servo=%4d us | Lights=%s | Brake=%s | Head=%s\n", 
                 joyY, joyX, 
                 (digitalRead(forwardPwmPin) ? "ON" : "OFF"),
                 (digitalRead(reversePwmPin) ? "ON" : "OFF"),
                 servoPulse,
                 (lightsOn ? "ON" : "OFF"),
-                (lightsOn ? brakeIntensity : 0),
-                (lightsOn ? headLightsIntensity : 0));
+                (lightsOn && brakeState ? "ON" : "OFF"),
+                (lightsOn ? "ON" : "OFF"));
   
   delay(25); // Reduced delay for better responsiveness
 }
