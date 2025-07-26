@@ -14,9 +14,7 @@ const int servoPin         = D4;  // GPIO4 (servo)
 const int redLightsPin     = D10; // GPIO10 (red brake lights)
 const int headLightsPin    = D9;  // GPIO9 (headlights)
 
-// PWM channels for lights control
-const int redLightsPwmChannel = 2;
-const int headLightsPwmChannel = 3;
+// Note: ESP32-C3 uses simplified PWM API - no channels needed
 
 // Motor PWM parameters - Use lower frequency to avoid servo conflicts
 const int pwmFreq       = 1000;  // 1 kHz for motors (much lower than servo's 50Hz)
@@ -60,11 +58,11 @@ Servo steeringServo;  // Create Servo object
 
 // Function to configure power management for energy saving
 void configurePowerManagement() {
-  // Set CPU frequency to 80MHz instead of 240MHz for energy saving
+  // Set CPU frequency to 80MHz instead of 160MHz for energy saving
   setCpuFrequencyMhz(80);
   
   // Configure power management
-  esp_pm_config_esp32_t pm_config;
+  esp_pm_config_t pm_config;
   pm_config.max_freq_mhz = 80;
   pm_config.min_freq_mhz = 10;
   pm_config.light_sleep_enable = true;
@@ -98,15 +96,15 @@ int calculateBrakeIntensity(uint16_t joyY) {
 void controlLights(uint16_t joyY, bool lightsOn) {
   if (lightsOn) {
     // Headlights on
-    ledcWrite(headLightsPwmChannel, headLightsIntensity);
+    ledcWrite(headLightsPin, headLightsIntensity);
     
     // Brake lights with intensity based on throttle
     int brakeIntensity = calculateBrakeIntensity(joyY);
-    ledcWrite(redLightsPwmChannel, brakeIntensity);
+    ledcWrite(redLightsPin, brakeIntensity);
   } else {
     // All lights off
-    ledcWrite(headLightsPwmChannel, 0);
-    ledcWrite(redLightsPwmChannel, 0);
+    ledcWrite(headLightsPin, 0);
+    ledcWrite(redLightsPin, 0);
   }
 }
 
@@ -164,15 +162,13 @@ void setup() {
   digitalWrite(forwardPwmPin, LOW);
   digitalWrite(reversePwmPin, LOW);
 
-  // Setup PWM for lights control
-  ledcSetup(redLightsPwmChannel, lightsPwmFreq, lightsPwmResolution);
-  ledcSetup(headLightsPwmChannel, lightsPwmFreq, lightsPwmResolution);
-  ledcAttachPin(redLightsPin, redLightsPwmChannel);
-  ledcAttachPin(headLightsPin, headLightsPwmChannel);
+  // Setup PWM for lights control (ESP32-C3 uses newer API)
+  ledcAttach(redLightsPin, lightsPwmFreq, lightsPwmResolution);
+  ledcAttach(headLightsPin, lightsPwmFreq, lightsPwmResolution);
   
   // Initialize lights to off
-  ledcWrite(redLightsPwmChannel, 0);
-  ledcWrite(headLightsPwmChannel, 0);
+  ledcWrite(redLightsPin, 0);
+  ledcWrite(headLightsPin, 0);
 
   // Initialize servo at 50Hz (ESP32Servo handles this automatically)
   steeringServo.setPeriodHertz(50);  // Explicitly set 50Hz

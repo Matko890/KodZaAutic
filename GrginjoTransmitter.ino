@@ -40,7 +40,7 @@ void configurePowerManagement() {
   setCpuFrequencyMhz(80);
   
   // Configure power management
-  esp_pm_config_esp32_t pm_config;
+  esp_pm_config_t pm_config;
   pm_config.max_freq_mhz = 80;
   pm_config.min_freq_mhz = 10;
   pm_config.light_sleep_enable = true;
